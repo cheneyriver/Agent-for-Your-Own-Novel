@@ -1,9 +1,10 @@
+import os
 from memory import Memory
 from utils import pick
 
 
 class CharacterAgent:
-    def __init__(self, config, relations):
+    def __init__(self, config, relations, llm_client=None):
         self.name = config.get("name")
         self.persona = config.get("persona", "")
         self.speaking_style = config.get("speaking_style", "")
@@ -11,6 +12,7 @@ class CharacterAgent:
         self.taboo = config.get("taboo", [])
         self.memory = Memory(config.get("long_term_memory", []))
         self.relations = relations
+        self.llm = llm_client
 
     def _memory_snippet(self):
         if not self.memory.long_term:
@@ -29,8 +31,34 @@ class CharacterAgent:
             return f"{rel_type}之情，暗藏{tension}"
         return rel_type or tension
 
-    def act(self, world, others, dialog_history):
-        target = pick([o.name for o in others]) if others else ""
+    def _build_messages(self, world, target, dialog_history):
+        relation_hint = self._relation_hint(target)
+        memory_snippet = self._memory_snippet()
+        recent_dialog = "\n".join(
+            [f"{d['speaker']}对{d.get('target') or '众人'}说：{d['text']}" for d in dialog_history[-4:]]
+        )
+        last_utter = dialog_history[-1]["text"] if dialog_history else ""
+
+        system = (
+            f"你是{self.name}。性情：{self.persona}。"
+            f"说话风格：{self.speaking_style}。"
+            f"目标：{'，'.join(self.goals)}。禁忌：{'，'.join(self.taboo)}。"
+            f"与{target}关系：{relation_hint or '不明'}。"
+            f"长期记忆线索：{memory_snippet or '无'}。"
+        )
+        user = (
+            f"场景：{world.brief()}。场景目标：{world.scene_goal}。\n"
+            f"最近对话：\n{recent_dialog or '（无）'}\n"
+            f"上一句：{last_utter or '（无）'}\n"
+            f"请以古典语气对{target}说话，1-2 句即可。\n"
+            f"要求：避免复用上句的句式或关键短语；不要套用固定模板；有回应、有转折。"
+        )
+        return [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user}
+        ]
+
+    def _fallback_act(self, target):
         memory_snippet = self._memory_snippet()
         relation_hint = self._relation_hint(target)
 
@@ -69,3 +97,23 @@ class CharacterAgent:
             "text": line,
             "tone": pick(openers)
         }
+
+    def act(self, world, others, dialog_history):
+        target = pick([o.name for o in others]) if others else ""
+
+        if self.llm and self.llm.enabled:
+            messages = self._build_messages(world, target or "众人", dialog_history)
+            try:
+                content = self.llm.generate(messages, temperature=0.9, max_tokens=180)
+                return {
+                    "speaker": self.name,
+                    "target": target,
+                    "text": content,
+                    "tone": ""
+                }
+            except Exception:
+                if os.getenv("LLM_STRICT", "") == "1":
+                    raise
+                return self._fallback_act(target)
+
+        return self._fallback_act(target)

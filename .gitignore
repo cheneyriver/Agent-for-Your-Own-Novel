@@ -1,0 +1,12 @@
+# Secrets
+API_KEY_LIST
+
+# Outputs
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local env
+.env
