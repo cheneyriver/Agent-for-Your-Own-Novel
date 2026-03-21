@@ -1,0 +1,82 @@
+{
+  "贾宝玉": {
+    "林黛玉": {
+      "type": "深情",
+      "intensity": 0.92,
+      "recent_change": "重逢后更觉亏欠",
+      "hidden_tension": "礼法与现实的阻隔"
+    },
+    "薛宝钗": {
+      "type": "责任",
+      "intensity": 0.68,
+      "recent_change": "相敬多于相悦",
+      "hidden_tension": "旧情难割"
+    },
+    "王熙凤": {
+      "type": "敬畏",
+      "intensity": 0.5,
+      "recent_change": "局势变迁使其锋芒收敛",
+      "hidden_tension": "家族倾覆后的失衡"
+    }
+  },
+  "林黛玉": {
+    "贾宝玉": {
+      "type": "知己",
+      "intensity": 0.95,
+      "recent_change": "重逢添惆怅",
+      "hidden_tension": "自尊与依恋"
+    },
+    "薛宝钗": {
+      "type": "敬而疏",
+      "intensity": 0.55,
+      "recent_change": "更能体谅",
+      "hidden_tension": "旧日竞争的影子"
+    },
+    "王熙凤": {
+      "type": "防备",
+      "intensity": 0.4,
+      "recent_change": "看透人事",
+      "hidden_tension": "权谋与真情"
+    }
+  },
+  "薛宝钗": {
+    "贾宝玉": {
+      "type": "规劝",
+      "intensity": 0.7,
+      "recent_change": "更重现实",
+      "hidden_tension": "情理难两全"
+    },
+    "林黛玉": {
+      "type": "体谅",
+      "intensity": 0.6,
+      "recent_change": "旧嫌渐淡",
+      "hidden_tension": "各守心事"
+    },
+    "王熙凤": {
+      "type": "谨慎",
+      "intensity": 0.5,
+      "recent_change": "同舟共济",
+      "hidden_tension": "彼此算计"
+    }
+  },
+  "王熙凤": {
+    "贾宝玉": {
+      "type": "操持",
+      "intensity": 0.62,
+      "recent_change": "锋利略钝",
+      "hidden_tension": "现实困境"
+    },
+    "林黛玉": {
+      "type": "试探",
+      "intensity": 0.45,
+      "recent_change": "话中带刺",
+      "hidden_tension": "家族旧账"
+    },
+    "薛宝钗": {
+      "type": "合谋",
+      "intensity": 0.58,
+      "recent_change": "互相倚赖",
+      "hidden_tension": "权柄与名分"
+    }
+  }
+}
