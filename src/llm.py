@@ -10,12 +10,42 @@ def load_api_keys(path):
             return json.load(f)
     except FileNotFoundError:
         return {}
+    except json.JSONDecodeError:
+        # Allow a simple line-based format as fallback:
+        # OPENAI=sk-xxx
+        # Qwen:sk-yyy
+        try:
+            text = open(path, "r", encoding="utf-8").read()
+        except Exception:
+            return {}
+        data = {}
+        for raw in text.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                k, v = line.split("=", 1)
+            elif ":" in line:
+                k, v = line.split(":", 1)
+            else:
+                continue
+            k = k.strip()
+            v = v.strip()
+            if not k or not v:
+                continue
+            data.setdefault(k, []).append(v)
+        return data
 
 
-def _first_key(keys, name):
+def _first_key(keys, name, index=None):
     values = keys.get(name, [])
-    if isinstance(values, list) and values:
-        return values[0]
+    if isinstance(values, list):
+        if index is not None:
+            try:
+                return values[int(index)]
+            except (ValueError, IndexError):
+                return ""
+        return values[0] if values else ""
     if isinstance(values, str):
         return values
     return ""
@@ -90,25 +120,91 @@ def _pick_provider_config(config, provider):
     return providers.get(provider, {}) if isinstance(providers, dict) else {}
 
 
+def _normalize_base_url(base_url):
+    if not base_url:
+        return base_url
+    trimmed = base_url.rstrip("/")
+    # Some users mistakenly put ".../v1/models"; our client will append "/chat/completions".
+    if trimmed.endswith("/models"):
+        trimmed = trimmed[: -len("/models")]
+    return trimmed
 
-def build_client(base_dir, config):
+
+def _get_key_index(explicit=None):
+    if explicit is not None:
+        return explicit
+    raw = os.getenv("LLM_KEY_INDEX", "")
+    if raw == "":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _case_insensitive_get(keys, name):
+    if not isinstance(keys, dict):
+        return None
+    if name in keys:
+        return name
+    lower = name.lower()
+    for k in keys.keys():
+        if isinstance(k, str) and k.lower() == lower:
+            return k
+    return None
+
+
+def _first_key_ci(keys, name, index=None):
+    actual = _case_insensitive_get(keys, name)
+    if not actual:
+        return ""
+    return _first_key(keys, actual, index=index)
+
+
+def available_providers(config):
+    if not isinstance(config, dict):
+        return []
+    providers = config.get("providers", {})
+    if isinstance(providers, dict):
+        return sorted([k for k in providers.keys() if isinstance(k, str)])
+    return []
+
+
+def count_keys_for_provider(base_dir, provider):
     keys = load_api_keys(os.path.join(base_dir, "API_KEY_LIST"))
-    provider = os.getenv("LLM_PROVIDER", config.get("provider", ""))
-    provider_lower = provider.lower()
-    provider_cfg = _pick_provider_config(config, provider_lower)
-
-    model = os.getenv("LLM_MODEL", provider_cfg.get("model", config.get("model", "")))
-    base_url = os.getenv("LLM_BASE_URL", provider_cfg.get("base_url", config.get("base_url", "")))
-    debug = os.getenv("LLM_DEBUG", "") == "1"
+    provider_lower = (provider or "").lower()
 
     if provider_lower == "openai":
-        api_key = _first_key(keys, "OPENAI") or _first_key(keys, "AGENT_KEY")
-        base_url = base_url or "https://api.openai.com/v1"
+        n1 = len(keys.get(_case_insensitive_get(keys, "OPENAI") or "OPENAI", []) or [])
+        n2 = len(keys.get(_case_insensitive_get(keys, "AGENT_KEY") or "AGENT_KEY", []) or [])
+        return max(n1, n2)
+    if provider_lower == "qwen":
+        n = len(keys.get(_case_insensitive_get(keys, "QWEN") or _case_insensitive_get(keys, "Qwen") or "Qwen", []) or [])
+        return n
+    return 0
+
+
+
+def build_client(base_dir, config, provider=None, model=None, base_url=None, key_index=None, debug=None):
+    keys = load_api_keys(os.path.join(base_dir, "API_KEY_LIST"))
+    provider = provider if provider is not None else os.getenv("LLM_PROVIDER", config.get("provider", ""))
+    provider_lower = (provider or "").lower()
+    provider_cfg = _pick_provider_config(config, provider_lower)
+
+    model = model if model is not None else os.getenv("LLM_MODEL", provider_cfg.get("model", config.get("model", "")))
+    base_url = base_url if base_url is not None else os.getenv("LLM_BASE_URL", provider_cfg.get("base_url", config.get("base_url", "")))
+    base_url = _normalize_base_url(base_url)
+    debug = debug if debug is not None else (os.getenv("LLM_DEBUG", "") == "1")
+    key_index = _get_key_index(explicit=key_index)
+
+    if provider_lower == "openai":
+        api_key = _first_key_ci(keys, "OPENAI", key_index) or _first_key_ci(keys, "AGENT_KEY", key_index)
+        base_url = _normalize_base_url(base_url) or "https://api.openai.com/v1"
         return LLMClient("openai", model, api_key, base_url, debug=debug)
 
     if provider_lower == "qwen":
-        api_key = _first_key(keys, "Qwen")
-        base_url = base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        api_key = _first_key_ci(keys, "Qwen", key_index) or _first_key_ci(keys, "QWEN", key_index)
+        base_url = _normalize_base_url(base_url) or "https://dashscope.aliyuncs.com/compatible-mode/v1"
         return LLMClient("qwen", model or "qwen-plus", api_key, base_url, debug=debug)
 
     return LLMClient(provider_lower, model, "", base_url, debug=debug)

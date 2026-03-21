@@ -19,12 +19,26 @@ python src/main.py
 
 输出会写入 `outputs/scene_01_story.md`。
 
+## 交互选择模型（推荐）
+默认执行 `python src/main.py` 会在启动时提示你选择：
+- provider（如 `openai` / `qwen` / `template`）
+- model（可使用配置默认，或手动输入覆盖）
+- base_url（可使用配置默认，或手动输入覆盖）
+- key index（当 `API_KEY_LIST` 里有多个 key 时，从 0 开始）
+
+如果你想脚本化/不交互运行，可使用 `--no-prompt` 与命令行参数覆盖：
+
+```bash
+python src/main.py --provider openai --model gpt-4o-mini --base-url https://api.openai.com/v1 --key-index 0 --no-prompt
+```
+
 ## LLM 配置
 - 配置文件：`configs/llm.json`
 - API Key：放在 `API_KEY_LIST`（已加入 `.gitignore`）
 - 也可用环境变量覆盖：`LLM_PROVIDER`、`LLM_MODEL`、`LLM_BASE_URL`
+- 选择第几个 key：`LLM_KEY_INDEX`（从 0 开始）
 
-`configs/llm.json` 现在按“厂商”分别配置：
+`configs/llm.json` 按“厂商”分别配置：
 ```json
 {
   "provider": "qwen",
@@ -36,6 +50,18 @@ python src/main.py
     "qwen": {
       "model": "qwen-plus",
       "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    }
+  }
+}
+```
+
+可选：如果你希望“选择 model”也能像 provider 一样列出候选项，可以在某个 provider 下加入 `models` 列表，例如：
+
+```json
+{
+  "providers": {
+    "openai": {
+      "models": ["gpt-4o-mini", "gpt-4.1-mini"]
     }
   }
 }

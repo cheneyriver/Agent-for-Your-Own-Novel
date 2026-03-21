@@ -3,7 +3,7 @@
   "providers": {
     "openai": {
       "model": "gpt-4o-mini",
-      "base_url": "https://api.openai.com/v1"
+      "base_url": "https://api.chatanywhere.tech/v1/models"
     },
     "qwen": {
       "model": "qwen-plus",
