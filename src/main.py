@@ -9,6 +9,7 @@ from logger import setup_run_logger
 from llm import available_providers, build_client, count_keys_for_provider
 from narrator import NarratorAgent
 from orchestrator import Orchestrator
+from planner import StoryPlannerAgent
 from reflection import ReflectionAgent
 from utils import load_json, save_text, seed_everything
 from world import RelationshipGraph, WorldState
@@ -154,13 +155,14 @@ def main():
     character_prompt = _read_prompt(prompts_dir / "character_template.txt")
     narrator_prompt = _read_prompt(prompts_dir / "narrator_prompt.txt")
     reflection_prompt = _read_prompt(prompts_dir / "reflection_prompt.txt")
+    planner_prompt = _read_prompt(prompts_dir / "planner_prompt.txt")
 
     world = WorldState(world_data)
     relations = RelationshipGraph(relations_data)
     logger.info(
         "[Main] config_loaded scene_turns=%s prompt_files=%s",
         scene_data.get("turns", 6),
-        "character_template.txt,narrator_prompt.txt,reflection_prompt.txt",
+        "character_template.txt,narrator_prompt.txt,reflection_prompt.txt,planner_prompt.txt",
     )
     provider, model, base_url, key_index, debug = select_llm_settings(base_dir, llm_config, args)
     if debug is None:
@@ -191,9 +193,10 @@ def main():
     agents = load_characters(relations, base_dir, llm_client, character_prompt, logger=logger)
     narrator_agent = NarratorAgent(llm_client=llm_client, prompt_template=narrator_prompt, logger=logger)
     reflection_agent = ReflectionAgent(llm_client=llm_client, prompt_template=reflection_prompt, logger=logger)
+    planner_agent = StoryPlannerAgent(llm_client=llm_client, prompt_template=planner_prompt, logger=logger)
 
     orchestrator = Orchestrator(world, logger=logger)
-    dialog = orchestrator.run(agents, scene_data.get("turns", 6))
+    dialog, turn_plans = orchestrator.run(agents, scene_data.get("turns", 6), planner=planner_agent)
     logger.info("[Main] dialog_generated count=%s", len(dialog))
 
     story = narrator_agent.compose(world, dialog)
@@ -201,6 +204,13 @@ def main():
     if review:
         logger.info("[Main] reflection_attached")
         story = f"{story}\n\n---\n【编辑评注】\n{review}"
+    if turn_plans:
+        plan_lines = []
+        for idx, plan in enumerate(turn_plans, start=1):
+            plan_lines.append(
+                f"- 第{idx}轮：任务={plan.get('task','')}；重点={plan.get('focus','')}；规则={plan.get('progress_rule','')}"
+            )
+        story = f"{story}\n\n---\n【剧情任务轨迹】\n" + "\n".join(plan_lines)
     story = f"【{run_id}】\n" + story
     output_path = base_dir / "outputs" / f"scene_01_story_{run_id}.md"
     logger.info("[Main] writing_output path=%s", output_path)

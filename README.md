@@ -103,7 +103,8 @@ dream-of-red-agents/
 ├─ prompts/
 │  ├─ character_template.txt
 │  ├─ narrator_prompt.txt
-│  └─ reflection_prompt.txt
+│  ├─ reflection_prompt.txt
+│  └─ planner_prompt.txt
 ├─ src/
 │  ├─ main.py
 │  ├─ agent.py
@@ -127,5 +128,18 @@ dream-of-red-agents/
 1. `CharacterAgent`：按角色设定与关系生成对白
 2. `NarratorAgent`：把对白整理为连贯叙事
 3. `ReflectionAgent`：对成文进行编辑评估并给出建议
+4. `StoryPlannerAgent`：每轮生成“剧情任务卡”，约束对白必须推进事件
 
 详细说明见 `docs/agent_modules.md`。
+
+## M2 剧情推进机制
+M2 版本新增“每轮任务卡”，避免对话空泛：
+
+- 每轮由 `StoryPlannerAgent` 生成：
+  - `TASK`：本轮剧情任务
+  - `FOCUS`：重点人物
+  - `RULE`：推进规则（必须新增具体信息并给出动作）
+- `CharacterAgent` 在发言时会接收：
+  - 本轮任务卡
+  - 角色 `hidden_goal`
+- 最终输出文末会附带 `【剧情任务轨迹】`，方便复盘每轮推进。

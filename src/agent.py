@@ -9,6 +9,7 @@ class CharacterAgent:
         self.persona = config.get("persona", "")
         self.speaking_style = config.get("speaking_style", "")
         self.goals = config.get("goals", [])
+        self.hidden_goal = config.get("hidden_goal", "")
         self.taboo = config.get("taboo", [])
         self.memory = Memory(config.get("long_term_memory", []))
         self.relations = relations
@@ -33,7 +34,7 @@ class CharacterAgent:
             return f"{rel_type}之情，暗藏{tension}"
         return rel_type or tension
 
-    def _build_messages(self, world, target, dialog_history):
+    def _build_messages(self, world, target, dialog_history, turn_plan=None):
         relation_hint = self._relation_hint(target)
         memory_snippet = self._memory_snippet()
         recent_dialog = "\n".join(
@@ -65,8 +66,11 @@ class CharacterAgent:
             f"场景：{world.brief()}。场景目标：{world.scene_goal}。\n"
             f"最近对话：\n{recent_dialog or '（无）'}\n"
             f"上一句：{last_utter or '（无）'}\n"
+            f"你的隐性目标：{self.hidden_goal or '无'}\n"
+            f"本轮剧情任务：{(turn_plan or {}).get('task', '推进人物关系并揭示新信息')}\n"
+            f"本轮推进要求：{(turn_plan or {}).get('progress_rule', '必须抛出一个具体信息点或行动主张')}\n"
             f"请以古典语气对{target}说话，1-2 句即可。\n"
-            f"要求：避免复用上句的句式或关键短语；不要套用固定模板；有回应、有转折。"
+            f"要求：避免复用上句的句式或关键短语；不要套用固定模板；有回应、有转折；必须包含一个具体细节。"
         )
         return [
             {"role": "system", "content": system},
@@ -113,7 +117,7 @@ class CharacterAgent:
             "tone": pick(openers)
         }
 
-    def act(self, world, others, dialog_history):
+    def act(self, world, others, dialog_history, turn_plan=None):
         target = pick([o.name for o in others]) if others else ""
         if self.logger:
             self.logger.info(
@@ -124,7 +128,7 @@ class CharacterAgent:
             )
 
         if self.llm and self.llm.enabled:
-            messages = self._build_messages(world, target or "众人", dialog_history)
+            messages = self._build_messages(world, target or "众人", dialog_history, turn_plan=turn_plan)
             if self.logger:
                 self.logger.debug(
                     "[CharacterAgent] prompt speaker=%s system=%s user=%s",
