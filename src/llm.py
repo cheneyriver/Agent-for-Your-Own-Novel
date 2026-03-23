@@ -59,12 +59,13 @@ def _post_json(url, headers, payload, timeout=60):
 
 
 class LLMClient:
-    def __init__(self, provider, model, api_key, base_url=None, debug=False):
+    def __init__(self, provider, model, api_key, base_url=None, debug=False, logger=None):
         self.provider = provider
         self.model = model
         self.api_key = api_key
         self.base_url = base_url
         self.debug = debug
+        self.logger = logger
 
     @property
     def enabled(self):
@@ -85,6 +86,15 @@ class LLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens
         }
+        if self.logger:
+            self.logger.info(
+                "[LLMClient] request provider=%s model=%s temperature=%s max_tokens=%s messages=%s",
+                self.provider,
+                self.model,
+                temperature,
+                max_tokens,
+                len(messages),
+            )
 
         if self.debug:
             print(f"[LLM] provider={self.provider} model={self.model}")
@@ -109,8 +119,24 @@ class LLMClient:
         choices = data.get("choices", [])
         if not choices:
             raise RuntimeError("LLM returned no choices")
-        message = choices[0].get("message", {})
+        choice0 = choices[0] or {}
+        message = choice0.get("message", {})
         content = message.get("content", "")
+        finish_reason = choice0.get("finish_reason", "")
+        usage = data.get("usage", {}) if isinstance(data, dict) else {}
+        if self.logger:
+            self.logger.info(
+                "[LLMClient] response_ok chars=%s finish_reason=%s prompt_tokens=%s completion_tokens=%s",
+                len(content or ""),
+                finish_reason or "(unknown)",
+                usage.get("prompt_tokens", "(n/a)"),
+                usage.get("completion_tokens", "(n/a)"),
+            )
+            if finish_reason and finish_reason != "stop":
+                self.logger.warning(
+                    "[LLMClient] non_stop_finish reason=%s possible_truncation=True",
+                    finish_reason,
+                )
         return content.strip()
 
 
@@ -185,7 +211,7 @@ def count_keys_for_provider(base_dir, provider):
 
 
 
-def build_client(base_dir, config, provider=None, model=None, base_url=None, key_index=None, debug=None):
+def build_client(base_dir, config, provider=None, model=None, base_url=None, key_index=None, debug=None, logger=None):
     keys = load_api_keys(os.path.join(base_dir, "API_KEY_LIST"))
     provider = provider if provider is not None else os.getenv("LLM_PROVIDER", config.get("provider", ""))
     provider_lower = (provider or "").lower()
@@ -200,11 +226,11 @@ def build_client(base_dir, config, provider=None, model=None, base_url=None, key
     if provider_lower == "openai":
         api_key = _first_key_ci(keys, "OPENAI", key_index) or _first_key_ci(keys, "AGENT_KEY", key_index)
         base_url = _normalize_base_url(base_url) or "https://api.openai.com/v1"
-        return LLMClient("openai", model, api_key, base_url, debug=debug)
+        return LLMClient("openai", model, api_key, base_url, debug=debug, logger=logger)
 
     if provider_lower == "qwen":
         api_key = _first_key_ci(keys, "Qwen", key_index) or _first_key_ci(keys, "QWEN", key_index)
         base_url = _normalize_base_url(base_url) or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        return LLMClient("qwen", model or "qwen-plus", api_key, base_url, debug=debug)
+        return LLMClient("qwen", model or "qwen-plus", api_key, base_url, debug=debug, logger=logger)
 
-    return LLMClient(provider_lower, model, "", base_url, debug=debug)
+    return LLMClient(provider_lower, model, "", base_url, debug=debug, logger=logger)

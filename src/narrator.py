@@ -1,3 +1,52 @@
+class NarratorAgent:
+    def __init__(self, llm_client=None, prompt_template="", logger=None):
+        self.llm = llm_client
+        self.prompt_template = prompt_template or ""
+        self.logger = logger
+
+    def _dialog_text(self, dialog):
+        lines = []
+        for utter in dialog:
+            speaker = utter.get("speaker")
+            target = utter.get("target") or "众人"
+            text = utter.get("text") or ""
+            lines.append(f"{speaker}对{target}道：{text}")
+        return "\n".join(lines)
+
+    def compose(self, world, dialog):
+        if self.logger:
+            self.logger.info("[NarratorAgent] compose_start dialog_len=%s", len(dialog))
+        if self.llm and self.llm.enabled:
+            system = self.prompt_template or "你是叙述者。请将对话整理为连贯叙事。"
+            user = (
+                f"场景：{world.brief()}。场景目标：{world.scene_goal}\n"
+                f"对话记录：\n{self._dialog_text(dialog) or '（无）'}\n"
+                f"请输出 1-2 段连贯小说文本，保留主要冲突。\n"
+                f"必须自然收束，最后一句必须完整结束。"
+            )
+            if self.logger:
+                self.logger.debug("[NarratorAgent] prompt system=%s", system)
+                self.logger.debug("[NarratorAgent] prompt user=%s", user)
+            try:
+                result = self.llm.generate(
+                    [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    temperature=0.7,
+                    max_tokens=900,
+                )
+                if self.logger:
+                    self.logger.info("[NarratorAgent] compose_llm_ok text=%s", result)
+                return result
+            except Exception:
+                if self.logger:
+                    self.logger.exception("[NarratorAgent] compose_llm_failed fallback=template")
+                return narrate(world, dialog)
+        if self.logger:
+            self.logger.info("[NarratorAgent] compose_llm_disabled fallback=template")
+        return narrate(world, dialog)
+
 
 def narrate(world, dialog):
     lines = []

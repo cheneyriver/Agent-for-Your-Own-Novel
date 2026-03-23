@@ -17,7 +17,7 @@ MVP 只做：
 python src/main.py
 ```
 
-输出会写入 `outputs/scene_01_story.md`。
+输出会写入 `outputs/scene_01_story_<run_id>.md`。
 
 ## 交互选择模型（推荐）
 默认执行 `python src/main.py` 会在启动时提示你选择：
@@ -30,6 +30,24 @@ python src/main.py
 
 ```bash
 python src/main.py --provider openai --model gpt-4o-mini --base-url https://api.openai.com/v1 --key-index 0 --no-prompt
+```
+
+## 日志与调试
+每次运行都会生成独立日志文件，路径为：
+
+- `logs/run_<run_id>.log`
+
+日志覆盖内容包括：
+- 模型选择与 LLM 客户端状态
+- Orchestrator 每轮 speaker/turn
+- Character/Narrator/Reflection 每个 Agent 的执行状态
+- LLM 请求与响应长度（不记录 API key）
+- 回退路径（LLM 失败时 fallback）
+
+可通过参数控制日志级别：
+
+```bash
+python src/main.py --log-level DEBUG
 ```
 
 ## LLM 配置
@@ -89,6 +107,7 @@ dream-of-red-agents/
 ├─ src/
 │  ├─ main.py
 │  ├─ agent.py
+│  ├─ reflection.py
 │  ├─ memory.py
 │  ├─ world.py
 │  ├─ orchestrator.py
@@ -98,5 +117,15 @@ dream-of-red-agents/
 ├─ outputs/
 │  └─ scene_01_story.md
 └─ docs/
-   └─ design.md
+   ├─ design.md
+   └─ agent_modules.md
 ```
+
+## Multi-Agent 流程
+当前版本将任务拆为 3 个 Agent（共用同一套 LLM API）：
+
+1. `CharacterAgent`：按角色设定与关系生成对白
+2. `NarratorAgent`：把对白整理为连贯叙事
+3. `ReflectionAgent`：对成文进行编辑评估并给出建议
+
+详细说明见 `docs/agent_modules.md`。

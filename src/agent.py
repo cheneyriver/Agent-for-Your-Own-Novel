@@ -4,7 +4,7 @@ from utils import pick
 
 
 class CharacterAgent:
-    def __init__(self, config, relations, llm_client=None):
+    def __init__(self, config, relations, llm_client=None, prompt_template="", logger=None):
         self.name = config.get("name")
         self.persona = config.get("persona", "")
         self.speaking_style = config.get("speaking_style", "")
@@ -13,6 +13,8 @@ class CharacterAgent:
         self.memory = Memory(config.get("long_term_memory", []))
         self.relations = relations
         self.llm = llm_client
+        self.prompt_template = prompt_template or ""
+        self.logger = logger
 
     def _memory_snippet(self):
         if not self.memory.long_term:
@@ -38,14 +40,27 @@ class CharacterAgent:
             [f"{d['speaker']}对{d.get('target') or '众人'}说：{d['text']}" for d in dialog_history[-4:]]
         )
         last_utter = dialog_history[-1]["text"] if dialog_history else ""
+        relationships = relation_hint or "关系未明"
+        scene_context = f"{world.brief()}；场景目标：{world.scene_goal}；长期记忆：{memory_snippet or '无'}"
 
-        system = (
-            f"你是{self.name}。性情：{self.persona}。"
-            f"说话风格：{self.speaking_style}。"
-            f"目标：{'，'.join(self.goals)}。禁忌：{'，'.join(self.taboo)}。"
-            f"与{target}关系：{relation_hint or '不明'}。"
-            f"长期记忆线索：{memory_snippet or '无'}。"
-        )
+        if self.prompt_template:
+            system = self.prompt_template.format(
+                character_name=self.name,
+                persona=self.persona,
+                speaking_style=self.speaking_style,
+                goals="，".join(self.goals),
+                taboo="，".join(self.taboo),
+                relationships=relationships,
+                scene=scene_context,
+            )
+        else:
+            system = (
+                f"你是{self.name}。性情：{self.persona}。"
+                f"说话风格：{self.speaking_style}。"
+                f"目标：{'，'.join(self.goals)}。禁忌：{'，'.join(self.taboo)}。"
+                f"与{target}关系：{relationships}。"
+                f"长期记忆线索：{memory_snippet or '无'}。"
+            )
         user = (
             f"场景：{world.brief()}。场景目标：{world.scene_goal}。\n"
             f"最近对话：\n{recent_dialog or '（无）'}\n"
@@ -100,11 +115,32 @@ class CharacterAgent:
 
     def act(self, world, others, dialog_history):
         target = pick([o.name for o in others]) if others else ""
+        if self.logger:
+            self.logger.info(
+                "[CharacterAgent] speaker=%s target=%s history_len=%s",
+                self.name,
+                target or "众人",
+                len(dialog_history),
+            )
 
         if self.llm and self.llm.enabled:
             messages = self._build_messages(world, target or "众人", dialog_history)
+            if self.logger:
+                self.logger.debug(
+                    "[CharacterAgent] prompt speaker=%s system=%s user=%s",
+                    self.name,
+                    messages[0].get("content", ""),
+                    messages[1].get("content", ""),
+                )
             try:
                 content = self.llm.generate(messages, temperature=0.9, max_tokens=180)
+                if self.logger:
+                    self.logger.info(
+                        "[CharacterAgent] llm_ok speaker=%s target=%s text=%s",
+                        self.name,
+                        target or "众人",
+                        content,
+                    )
                 return {
                     "speaker": self.name,
                     "target": target,
@@ -112,8 +148,15 @@ class CharacterAgent:
                     "tone": ""
                 }
             except Exception:
+                if self.logger:
+                    self.logger.exception(
+                        "[CharacterAgent] llm_failed speaker=%s fallback=template",
+                        self.name,
+                    )
                 if os.getenv("LLM_STRICT", "") == "1":
                     raise
                 return self._fallback_act(target)
 
+        if self.logger:
+            self.logger.info("[CharacterAgent] llm_disabled speaker=%s fallback=template", self.name)
         return self._fallback_act(target)
