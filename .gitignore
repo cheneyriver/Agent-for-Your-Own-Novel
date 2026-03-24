@@ -4,6 +4,9 @@ API_KEY_LIST
 # Outputs
 outputs/
 
+# Long-term memory (chapter state, foreshadowing)
+memory/
+
 # Python
 __pycache__/
 *.pyc

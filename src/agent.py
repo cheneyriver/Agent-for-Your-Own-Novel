@@ -34,7 +34,7 @@ class CharacterAgent:
             return f"{rel_type}之情，暗藏{tension}"
         return rel_type or tension
 
-    def _build_messages(self, world, target, dialog_history, turn_plan=None):
+    def _build_messages(self, world, target, dialog_history, turn_plan=None, chapter_context=""):
         relation_hint = self._relation_hint(target)
         memory_snippet = self._memory_snippet()
         recent_dialog = "\n".join(
@@ -64,6 +64,7 @@ class CharacterAgent:
             )
         user = (
             f"场景：{world.brief()}。场景目标：{world.scene_goal}。\n"
+            f"章节长期约束：\n{chapter_context or '无'}\n"
             f"最近对话：\n{recent_dialog or '（无）'}\n"
             f"上一句：{last_utter or '（无）'}\n"
             f"你的隐性目标：{self.hidden_goal or '无'}\n"
@@ -117,7 +118,7 @@ class CharacterAgent:
             "tone": pick(openers)
         }
 
-    def act(self, world, others, dialog_history, turn_plan=None):
+    def act(self, world, others, dialog_history, turn_plan=None, chapter_context=""):
         target = pick([o.name for o in others]) if others else ""
         if self.logger:
             self.logger.info(
@@ -128,7 +129,13 @@ class CharacterAgent:
             )
 
         if self.llm and self.llm.enabled:
-            messages = self._build_messages(world, target or "众人", dialog_history, turn_plan=turn_plan)
+            messages = self._build_messages(
+                world,
+                target or "众人",
+                dialog_history,
+                turn_plan=turn_plan,
+                chapter_context=chapter_context,
+            )
             if self.logger:
                 self.logger.debug(
                     "[CharacterAgent] prompt speaker=%s system=%s user=%s",

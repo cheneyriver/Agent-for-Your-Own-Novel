@@ -3,7 +3,7 @@ class Orchestrator:
         self.world = world
         self.logger = logger
 
-    def run(self, agents, turns, planner=None):
+    def run(self, agents, turns, planner=None, chapter_context=None):
         dialog = []
         if not agents:
             if self.logger:
@@ -19,7 +19,14 @@ class Orchestrator:
             turn_index = i + 1
             speakers = [a.name for a in agents]
             turn_plan = (
-                planner.plan_turn(self.world, dialog, turn_index, turns, speakers)
+                planner.plan_turn(
+                    self.world,
+                    dialog,
+                    turn_index,
+                    turns,
+                    speakers,
+                    chapter_context=chapter_context,
+                )
                 if planner
                 else {"task": "推进人物关系", "focus": speaker.name, "progress_rule": "给出具体信息与动作"}
             )
@@ -31,7 +38,13 @@ class Orchestrator:
                     speaker.name,
                     turn_plan.get("task"),
                 )
-            utter = speaker.act(self.world, others, dialog, turn_plan=turn_plan)
+            utter = speaker.act(
+                self.world,
+                others,
+                dialog,
+                turn_plan=turn_plan,
+                chapter_context=chapter_context or "",
+            )
             dialog.append(utter)
 
             event = f"{utter['speaker']}对{utter['target'] or '众人'}说：{utter['text']}"

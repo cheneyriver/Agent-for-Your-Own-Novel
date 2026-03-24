@@ -11,6 +11,13 @@ from narrator import NarratorAgent
 from orchestrator import Orchestrator
 from planner import StoryPlannerAgent
 from reflection import ReflectionAgent
+from story_state import (
+    commit_chapter_state,
+    load_story_state,
+    save_story_state,
+    summarize_story_state,
+)
+from summarizer import summarize_chapter
 from utils import load_json, save_text, seed_everything
 from world import RelationshipGraph, WorldState
 
@@ -83,6 +90,7 @@ def _build_arg_parser():
     p.add_argument("--no-prompt", action="store_true", help="Disable interactive selection")
     p.add_argument("--debug-llm", action="store_true", help="Print LLM request debug info")
     p.add_argument("--log-level", default="INFO", help="Log level: DEBUG/INFO/WARNING/ERROR")
+    p.add_argument("--no-human-feedback", action="store_true", help="Disable interactive human feedback checkpoints")
     return p
 
 
@@ -139,6 +147,62 @@ def select_llm_settings(base_dir, llm_config, args):
     return choice, model, base_url, key_index, None
 
 
+def collect_human_feedback(chapter_idx, scene_data, state_summary, no_human_feedback=False):
+    should_prompt = (not no_human_feedback) and sys.stdin.isatty()
+    defaults = {
+        "chapter_goal": scene_data.get("prompt", "推进关系并揭示新信息"),
+        "must_advance_1": "揭示旧信的一条具体内容",
+        "must_advance_2": "至少一位角色提出下一步行动",
+        "forbidden": "避免空泛重复抒情",
+        "mid_twist": "新增一条信息差或误会",
+        "ending_hook": "留下下一章可追踪的问题",
+        "new_foreshadowing": [],
+    }
+    if not should_prompt:
+        return defaults
+
+    print("\n===== Human Feedback Checkpoint A（章前）=====")
+    print("当前长期状态：")
+    print(state_summary)
+    chapter_goal = _prompt_text("本章主目标", defaults["chapter_goal"])
+    must_advance_1 = _prompt_text("本章必须推进点 1", defaults["must_advance_1"])
+    must_advance_2 = _prompt_text("本章必须推进点 2", defaults["must_advance_2"])
+    forbidden = _prompt_text("本章禁止项", defaults["forbidden"])
+
+    print("\n===== Human Feedback Checkpoint B（中段转折）=====")
+    mid_twist = _prompt_text("本章中段转折类型", defaults["mid_twist"])
+
+    print("\n===== Human Feedback Checkpoint C（章末钩子）=====")
+    ending_hook = _prompt_text("本章结尾钩子", defaults["ending_hook"])
+
+    print("\n===== Human Feedback 伏笔（可选）=====")
+    new_foreshadowing_raw = _prompt_text("本章拟埋设的伏笔，多个用分号分隔", default_value="")
+    new_foreshadowing = [s.strip() for s in new_foreshadowing_raw.split(";") if s.strip()]
+
+    return {
+        "chapter_goal": chapter_goal,
+        "must_advance_1": must_advance_1,
+        "must_advance_2": must_advance_2,
+        "forbidden": forbidden,
+        "mid_twist": mid_twist,
+        "ending_hook": ending_hook,
+        "new_foreshadowing": new_foreshadowing,
+    }
+
+
+def build_chapter_context(story_state, human_feedback):
+    state_summary = summarize_story_state(story_state)
+    feedback_summary = (
+        f"本章主目标：{human_feedback.get('chapter_goal','')}\n"
+        f"必须推进1：{human_feedback.get('must_advance_1','')}\n"
+        f"必须推进2：{human_feedback.get('must_advance_2','')}\n"
+        f"禁止项：{human_feedback.get('forbidden','')}\n"
+        f"中段转折：{human_feedback.get('mid_twist','')}\n"
+        f"章末钩子：{human_feedback.get('ending_hook','')}"
+    )
+    return state_summary + "\n\n" + feedback_summary
+
+
 def main():
     args = _build_arg_parser().parse_args()
     seed_everything(42)
@@ -151,6 +215,8 @@ def main():
     scene_data = load_json(base_dir / "configs" / "scene_01.json")
     relations_data = load_json(base_dir / "configs" / "relations.json")
     llm_config = load_json(base_dir / "configs" / "llm.json")
+    story_state_path = base_dir / "memory" / "story_state.json"
+    story_state = load_story_state(story_state_path)
     prompts_dir = base_dir / "prompts"
     character_prompt = _read_prompt(prompts_dir / "character_template.txt")
     narrator_prompt = _read_prompt(prompts_dir / "narrator_prompt.txt")
@@ -164,6 +230,14 @@ def main():
         scene_data.get("turns", 6),
         "character_template.txt,narrator_prompt.txt,reflection_prompt.txt,planner_prompt.txt",
     )
+    human_feedback = collect_human_feedback(
+        story_state.get("chapter_index", 1),
+        scene_data,
+        summarize_story_state(story_state),
+        no_human_feedback=args.no_human_feedback,
+    )
+    chapter_context = build_chapter_context(story_state, human_feedback)
+    logger.info("[Main] human_feedback=%s", human_feedback)
     provider, model, base_url, key_index, debug = select_llm_settings(base_dir, llm_config, args)
     if debug is None:
         debug = True if args.debug_llm else None
@@ -196,11 +270,17 @@ def main():
     planner_agent = StoryPlannerAgent(llm_client=llm_client, prompt_template=planner_prompt, logger=logger)
 
     orchestrator = Orchestrator(world, logger=logger)
-    dialog, turn_plans = orchestrator.run(agents, scene_data.get("turns", 6), planner=planner_agent)
+    dialog, turn_plans = orchestrator.run(
+        agents,
+        scene_data.get("turns", 6),
+        planner=planner_agent,
+        chapter_context=chapter_context,
+    )
     logger.info("[Main] dialog_generated count=%s", len(dialog))
 
-    story = narrator_agent.compose(world, dialog)
-    review = reflection_agent.review(world, dialog, story)
+    story_core = narrator_agent.compose(world, dialog)
+    review = reflection_agent.review(world, dialog, story_core)
+    story = story_core
     if review:
         logger.info("[Main] reflection_attached")
         story = f"{story}\n\n---\n【编辑评注】\n{review}"
@@ -211,10 +291,38 @@ def main():
                 f"- 第{idx}轮：任务={plan.get('task','')}；重点={plan.get('focus','')}；规则={plan.get('progress_rule','')}"
             )
         story = f"{story}\n\n---\n【剧情任务轨迹】\n" + "\n".join(plan_lines)
+    story = f"{story}\n\n---\n【人类反馈约束】\n{chapter_context}"
     story = f"【{run_id}】\n" + story
     output_path = base_dir / "outputs" / f"scene_01_story_{run_id}.md"
     logger.info("[Main] writing_output path=%s", output_path)
     save_text(output_path, story)
+    summary_result = summarize_chapter(
+        llm_client,
+        story_core,
+        dialog,
+        turn_plans,
+        human_feedback,
+        logger=logger,
+    )
+    chapter_summary_dict = {
+        "summary": summary_result.get("summary", story_core[:300]),
+        "key_events": summary_result.get("key_events", []),
+        "key_characters": summary_result.get("key_characters", []),
+    }
+    new_foreshadowing = list(summary_result.get("foreshadowing", []))
+    human_foreshadowing = human_feedback.get("new_foreshadowing") or []
+    new_foreshadowing.extend(human_foreshadowing)
+    story_state = commit_chapter_state(
+        story_state,
+        chapter_summary=story_core,
+        dialog=dialog,
+        human_feedback=human_feedback,
+        turns_plans=turn_plans,
+        chapter_summary_dict=chapter_summary_dict,
+        new_foreshadowing=new_foreshadowing,
+    )
+    save_story_state(story_state_path, story_state)
+    logger.info("[Main] story_state_saved path=%s", story_state_path)
 
     logger.info("[Main] run_done output=%s", output_path)
     print(f"Story saved to: {output_path}")

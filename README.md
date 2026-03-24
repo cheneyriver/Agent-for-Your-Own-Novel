@@ -143,3 +143,25 @@ M2 版本新增“每轮任务卡”，避免对话空泛：
   - 本轮任务卡
   - 角色 `hidden_goal`
 - 最终输出文末会附带 `【剧情任务轨迹】`，方便复盘每轮推进。
+
+## 长程记忆 + Human Feedback（当前版本）
+系统新增章节状态卡（`memory/story_state.json`）：
+
+- `facts`：近期事实记忆
+- `narrative_debts`：待回收叙事债务
+- `human_feedback_history`：每章你的反馈记录
+- `last_chapter_summary`：上一章摘要
+- `chapter_summaries`：**M4a** 章节级摘要（含关键事件）
+- `foreshadowing_table`：**M4b** 伏笔表（待回收/已回收）
+
+每次运行会在 3 个 checkpoint（章前/中段/章末）收集你的反馈，并注入 Planner 与角色发言上下文。可选输入「本章拟埋设的伏笔」，会写入伏笔表供后续章节回收。
+
+如需跳过交互（自动默认值）：
+
+```bash
+python src/main.py --no-human-feedback
+```
+
+## M4 输出扩展
+- 每章对话轮数：`configs/scene_01.json` 中 `turns` 默认 12
+- 叙事成文：3-5 段，max_tokens 1800

@@ -21,7 +21,7 @@ class NarratorAgent:
             user = (
                 f"场景：{world.brief()}。场景目标：{world.scene_goal}\n"
                 f"对话记录：\n{self._dialog_text(dialog) or '（无）'}\n"
-                f"请输出 1-2 段连贯小说文本，保留主要冲突。\n"
+                f"请输出 3-5 段连贯小说文本，保留主要冲突与人物弧光。\n"
                 f"必须自然收束，最后一句必须完整结束。"
             )
             if self.logger:
@@ -34,7 +34,7 @@ class NarratorAgent:
                         {"role": "user", "content": user},
                     ],
                     temperature=0.7,
-                    max_tokens=900,
+                    max_tokens=1800,
                 )
                 if self.logger:
                     self.logger.info("[NarratorAgent] compose_llm_ok text=%s", result)

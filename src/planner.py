@@ -21,7 +21,7 @@ class StoryPlannerAgent:
             "progress_rule": "本轮必须新增一个具体信息点，并给出下一步动作",
         }
 
-    def plan_turn(self, world, dialog_history, turn_index, total_turns, speakers):
+    def plan_turn(self, world, dialog_history, turn_index, total_turns, speakers, chapter_context=None):
         if self.logger:
             self.logger.info("[PlannerAgent] plan_start turn=%s/%s", turn_index, total_turns)
         if not (self.llm and self.llm.enabled):
@@ -38,6 +38,7 @@ class StoryPlannerAgent:
             f"场景：{world.brief()}。场景目标：{world.scene_goal}\n"
             f"当前回合：{turn_index}/{total_turns}\n"
             f"可用角色：{','.join(speakers)}\n"
+            f"章节约束：\n{chapter_context or '无'}\n"
             f"最近对话：\n{recent or '（无）'}\n"
             "请仅输出三行：\n"
             "TASK: <本轮任务>\n"
