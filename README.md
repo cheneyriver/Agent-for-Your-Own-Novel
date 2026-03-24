@@ -165,3 +165,9 @@ python src/main.py --no-human-feedback
 ## M4 输出扩展
 - 每章对话轮数：`configs/scene_01.json` 中 `turns` 默认 12
 - 叙事成文：3-5 段，max_tokens 1800
+
+## M4c 关系动态更新
+章末根据本章对话与成文，由 LLM 推断人物关系变化，写入 `relation_deltas`。
+- **增量**：只传入当前有效关系（base + 已有 deltas）+ 本章内容，成本 O(1)/章
+- **下一章**：`merge_relations(base, deltas)` 得到有效关系，注入 CharacterAgent
+- 输出文末会附带 `【本章关系变化】`（若有）

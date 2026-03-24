@@ -35,11 +35,12 @@ def save_story_state(path, state):
     p.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def summarize_story_state(state, max_items=5, max_summaries=5, max_foreshadowing=8):
+def summarize_story_state(state, max_items=5, max_summaries=5, max_foreshadowing=8, max_relation_deltas=6):
     facts = state.get("facts", [])[-max_items:]
     debts = state.get("narrative_debts", [])[-max_items:]
     summaries = state.get("chapter_summaries", [])[-max_summaries:]
     foreshadowing = [f for f in state.get("foreshadowing_table", []) if f.get("status") == "open"][-max_foreshadowing:]
+    relation_deltas = state.get("relation_deltas", [])[-max_relation_deltas:]
 
     summary_lines = [
         f"章节序号：{state.get('chapter_index', 1)}",
@@ -58,11 +59,16 @@ def summarize_story_state(state, max_items=5, max_summaries=5, max_foreshadowing
     if foreshadowing:
         f_lines = [f"  - {f.get('description', '')}（第{f.get('introduced_chapter', '?')}章埋设）" for f in foreshadowing]
         summary_lines.append("待回收伏笔：\n" + "\n".join(f_lines))
+    if relation_deltas:
+        rd_lines = [f"  {d.get('from','')}→{d.get('to','')}: {d.get('recent_change','')}" for d in relation_deltas if d.get("recent_change")]
+        if rd_lines:
+            summary_lines.append("近期关系变化：\n" + "\n".join(rd_lines))
     return "\n".join(summary_lines)
 
 
 def commit_chapter_state(state, chapter_summary, dialog, human_feedback, turns_plans,
-                         chapter_summary_dict=None, new_foreshadowing=None, resolved_foreshadowing_ids=None):
+                         chapter_summary_dict=None, new_foreshadowing=None, resolved_foreshadowing_ids=None,
+                         relation_deltas_this_chapter=None):
     chapter_idx = int(state.get("chapter_index", 1))
     state["chapter_index"] = chapter_idx + 1
     state["last_chapter_summary"] = chapter_summary[:600]
@@ -109,5 +115,10 @@ def commit_chapter_state(state, chapter_summary, dialog, human_feedback, turns_p
                     "status": "open",
                 })
     state["foreshadowing_table"] = foreshadowing[-60:]
+
+    if relation_deltas_this_chapter:
+        deltas = state.setdefault("relation_deltas", [])
+        deltas.extend(relation_deltas_this_chapter)
+        state["relation_deltas"] = deltas[-100:]
 
     return state

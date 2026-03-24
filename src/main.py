@@ -17,6 +17,7 @@ from story_state import (
     save_story_state,
     summarize_story_state,
 )
+from relation_updater import merge_relations, update_relations
 from summarizer import summarize_chapter
 from utils import load_json, save_text, seed_everything
 from world import RelationshipGraph, WorldState
@@ -224,7 +225,8 @@ def main():
     planner_prompt = _read_prompt(prompts_dir / "planner_prompt.txt")
 
     world = WorldState(world_data)
-    relations = RelationshipGraph(relations_data)
+    effective_relations_data = merge_relations(relations_data, story_state.get("relation_deltas", []))
+    relations = RelationshipGraph(effective_relations_data)
     logger.info(
         "[Main] config_loaded scene_turns=%s prompt_files=%s",
         scene_data.get("turns", 6),
@@ -291,6 +293,19 @@ def main():
                 f"- 第{idx}轮：任务={plan.get('task','')}；重点={plan.get('focus','')}；规则={plan.get('progress_rule','')}"
             )
         story = f"{story}\n\n---\n【剧情任务轨迹】\n" + "\n".join(plan_lines)
+    chapter_idx = story_state.get("chapter_index", 1)
+    relation_deltas_this_chapter = update_relations(
+        llm_client,
+        relations_data,
+        story_state.get("relation_deltas", []),
+        dialog,
+        story_core,
+        chapter_idx,
+        logger=logger,
+    )
+    if relation_deltas_this_chapter:
+        rd_lines = [f"- {d.get('from','')}→{d.get('to','')}: {d.get('recent_change','')}" for d in relation_deltas_this_chapter]
+        story = f"{story}\n\n---\n【本章关系变化】\n" + "\n".join(rd_lines)
     story = f"{story}\n\n---\n【人类反馈约束】\n{chapter_context}"
     story = f"【{run_id}】\n" + story
     output_path = base_dir / "outputs" / f"scene_01_story_{run_id}.md"
@@ -320,6 +335,7 @@ def main():
         turns_plans=turn_plans,
         chapter_summary_dict=chapter_summary_dict,
         new_foreshadowing=new_foreshadowing,
+        relation_deltas_this_chapter=relation_deltas_this_chapter,
     )
     save_story_state(story_state_path, story_state)
     logger.info("[Main] story_state_saved path=%s", story_state_path)
